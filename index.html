@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -10,7 +11,7 @@
   "imports": {
     "react/": "https://esm.sh/react@^19.1.0/",
     "react": "https://esm.sh/react@^19.1.0",
-    "react-dom/": "https://esm.sh/react-dom@^19.1.0/"
+    "react-dom/client": "https://esm.sh/react-dom@^19.1.0/client"
   }
 }
 </script>
@@ -18,7 +19,386 @@
 </head>
 <body style="background-color: #000000; color: #22DFBF;">
   <div id="root"></div>
-  <script type="module" src="./index.tsx"></script>
+  <script type="module">
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import ReactDOM from 'react-dom/client';
+
+// --- START OF INLINED constants.ts ---
+const NUM_OTHER_PLAYERS = 7;
+const TOTAL_ROUNDS_DISPLAYED = 20;
+const CYCLE_LENGTH = 7;
+// --- END OF INLINED constants.ts ---
+
+// --- START OF INLINED PlayerNameInput.tsx ---
+const PlayerNameInput = ({ label, value, onChange, placeholder, id }) => {
+  return (
+    React.createElement("div", { className: "mb-4" },
+      React.createElement("label", { htmlFor: id, className: "block text-sm font-medium text-[#22DFBF] mb-1" },
+        label
+      ),
+      React.createElement("input", {
+        type: "text",
+        id: id,
+        value: value,
+        onChange: (e) => onChange(e.target.value),
+        placeholder: placeholder || 'Enter player name',
+        className: "w-full px-3 py-2 bg-[#001301] border border-[#22DFBF]/70 rounded-md shadow-sm text-[#22DFBF] placeholder-[#22DFBF]/70 focus:outline-none focus:ring-2 focus:ring-[#22DFBF] focus:border-[#22DFBF]"
+      })
+    )
+  );
+};
+// --- END OF INLINED PlayerNameInput.tsx ---
+
+// --- START OF INLINED MatchupSelector.tsx ---
+const MatchupSelector = ({ id, label, value, onChange, options, disabled = false, placeholder = "Select Opponent" }) => {
+  return (
+    React.createElement("div", { className: "mb-6" },
+      React.createElement("label", { htmlFor: id, className: "block text-sm font-medium text-[#22DFBF] mb-1" },
+        label
+      ),
+      React.createElement("select", {
+        id: id,
+        value: value,
+        onChange: (e) => onChange(e.target.value),
+        disabled: disabled,
+        className: "w-full px-3 py-2 bg-[#001301] border border-[#22DFBF]/70 rounded-md shadow-sm text-[#22DFBF] focus:outline-none focus:ring-2 focus:ring-[#22DFBF] focus:border-[#22DFBF] disabled:bg-[#001301]/50 disabled:text-[#22DFBF]/50 disabled:cursor-not-allowed"
+      },
+        React.createElement("option", { value: "", disabled: value !== "", style: { backgroundColor: '#001301', color: '#22DFBF' } }, placeholder),
+        options.map((optionName) => (
+          React.createElement("option", { key: optionName, value: optionName, style: { backgroundColor: '#001301', color: '#22DFBF' } },
+            optionName
+          )
+        ))
+      )
+    )
+  );
+};
+// --- END OF INLINED MatchupSelector.tsx ---
+
+// --- START OF INLINED PredictionDisplay.tsx ---
+const roundToStageMapping = {
+  1: "Stage 1-2",
+  2: "Stage 1-3",
+  3: "Stage 1-4 (before Fatebox 1)",
+  4: "Stage 2-1 (after Fatebox 1)",
+  5: "Stage 2-2",
+  6: "Stage 2-4 (after Monster round)",
+  7: "Stage 2-5",
+  8: "Stage 2-6 (before Fatebox 2)",
+  9: "Stage 3-1 (after Fatebox 2)",
+  10: "Stage 3-2",
+  11: "Stage 3-4 (after Monster 2)",
+  12: "Stage 3-5",
+  13: "Stage 3-6 (before Fatebox 3)",
+  14: "Stage 4-1",
+  15: "Stage 4-2",
+  16: "Stage 4-4 (after Monster 3)",
+  17: "Stage 4-5",
+  18: "Stage 4-6 (before Fatebox 4)",
+  19: "Stage 5-1 (after Fatebox 4)",
+  20: "Stage 5-2",
+};
+
+const PredictionDisplay = ({ player1Name, predictions }) => {
+  if (predictions.every(p => p === '' || p === '?')) {
+    return (
+      React.createElement("div", { className: "bg-[#001301] p-6 rounded-xl shadow-2xl mt-8 lg:mt-0 border border-[#22DFBF]/30" },
+        React.createElement("h2", { className: "text-2xl font-bold text-[#22DFBF] mb-4 flex items-center" },
+          React.createElement("span", { role: "img", "aria-label": "brain", className: "mr-2 text-3xl" }, "\uD83E\uDDE0"),
+          "Matchups for ", player1Name || 'Player 1'
+        ),
+        React.createElement("p", { className: "text-[#22DFBF]/80" }, "Enter player names and matchup information to see matchups.")
+      )
+    );
+  }
+
+  const renderRound = (originalRoundNumber, opponent) => {
+    const stageLabel = roundToStageMapping[originalRoundNumber] || `Round ${originalRoundNumber}`;
+    return (
+      React.createElement("li", { key: `round-${originalRoundNumber}`, className: "py-2.5 px-3 bg-[#000000] rounded-md flex justify-between items-center text-sm" },
+        React.createElement("span", { className: "font-semibold text-[#22DFBF]" }, stageLabel),
+        React.createElement("span", { className: "text-[#22DFBF]" }, "vs ", opponent || '?')
+      )
+    );
+  };
+
+  return (
+    React.createElement("div", { className: "bg-[#001301] p-6 rounded-xl shadow-2xl mt-8 lg:mt-0 border border-[#22DFBF]/30" },
+      React.createElement("h2", { className: "text-2xl font-bold text-[#22DFBF] mb-6 flex items-center" },
+        React.createElement("span", { role: "img", "aria-label": "brain", className: "mr-2 text-3xl" }, "\uD83E\uDDE0"),
+        "Matchups for ", player1Name || 'Player 1'
+      ),
+      React.createElement("div", null,
+        React.createElement("ul", { className: "space-y-1.5" },
+          predictions.slice(0, TOTAL_ROUNDS_DISPLAYED).map((opponent, index) => {
+             const currentRoundNumber = index + 1;
+             return renderRound(currentRoundNumber, opponent);
+          })
+        )
+      )
+    )
+  );
+};
+// --- END OF INLINED PredictionDisplay.tsx ---
+
+// --- START OF INLINED App.tsx ---
+const App = () => {
+  const [player1Name, setPlayer1Name] = useState('');
+  const [otherPlayerNames, setOtherPlayerNames] = useState(Array(NUM_OTHER_PLAYERS).fill(''));
+
+  const [r1Opponent, setR1Opponent] = useState('');
+  const [r2Opponent, setR2Opponent] = useState('');
+  const [r3OpponentDerived, setR3OpponentDerived] = useState(''); 
+  const [r4Opponent, setR4Opponent] = useState('');
+  const [r5OpponentDerived, setR5OpponentDerived] = useState(''); 
+  const [r6OpponentDerived, setR6OpponentDerived] = useState(''); 
+
+  const [predictionsForP1, setPredictionsForP1] = useState(Array(TOTAL_ROUNDS_DISPLAYED).fill('?'));
+
+  const handleOtherPlayerNameChange = (index, name) => {
+    const newNames = [...otherPlayerNames];
+    newNames[index] = name;
+    setOtherPlayerNames(newNames);
+  };
+
+  const allAvailablePlayerNames = useMemo(() => {
+    return [player1Name, ...otherPlayerNames].filter(name => name && name.trim() !== '').reduce((acc, name) => {
+      if (!acc.includes(name)) acc.push(name); 
+      return acc;
+    }, []);
+  }, [player1Name, otherPlayerNames]);
+
+  const p1OpponentOptions = useMemo(() => {
+    return otherPlayerNames.filter(name => name && name.trim() !== '');
+  }, [otherPlayerNames]);
+
+  const getFilteredOptions = useCallback((excludePlayerName) => {
+    if (!excludePlayerName) return allAvailablePlayerNames;
+    return allAvailablePlayerNames.filter(name => name !== excludePlayerName);
+  }, [allAvailablePlayerNames]);
+  
+  useEffect(() => {
+    if (r1Opponent && !p1OpponentOptions.includes(r1Opponent)) setR1Opponent('');
+  }, [r1Opponent, p1OpponentOptions]);
+  useEffect(() => {
+    if (r2Opponent && !p1OpponentOptions.includes(r2Opponent)) setR2Opponent('');
+  }, [r2Opponent, p1OpponentOptions]);
+  useEffect(() => {
+    if (r4Opponent && !p1OpponentOptions.includes(r4Opponent)) setR4Opponent('');
+  }, [r4Opponent, p1OpponentOptions]);
+
+  useEffect(() => {
+    const options = getFilteredOptions(r1Opponent);
+    if (r3OpponentDerived && r1Opponent && !options.includes(r3OpponentDerived)) {
+      setR3OpponentDerived('');
+    } else if (r3OpponentDerived && !r1Opponent) { 
+      setR3OpponentDerived('');
+    }
+  }, [r3OpponentDerived, r1Opponent, getFilteredOptions]);
+
+  useEffect(() => {
+    const options = getFilteredOptions(r1Opponent);
+    if (r5OpponentDerived && r1Opponent && !options.includes(r5OpponentDerived)) {
+      setR5OpponentDerived('');
+    } else if (r5OpponentDerived && !r1Opponent) {
+      setR5OpponentDerived('');
+    }
+  }, [r5OpponentDerived, r1Opponent, getFilteredOptions]);
+  
+  const p1sR3OpponentActual = r3OpponentDerived;
+  useEffect(() => {
+    const options = getFilteredOptions(p1sR3OpponentActual);
+    if (r6OpponentDerived && p1sR3OpponentActual && !options.includes(r6OpponentDerived)) {
+       setR6OpponentDerived('');
+    } else if (r6OpponentDerived && !p1sR3OpponentActual) {
+       setR6OpponentDerived('');
+    }
+  }, [r6OpponentDerived, p1sR3OpponentActual, getFilteredOptions]);
+
+
+  useEffect(() => {
+    let calculatedR7Opponent = '?';
+    const filledOtherPlayerNames = otherPlayerNames.filter(name => name && name.trim() !== '');
+    
+    const p1OpponentsR1ToR6 = [
+        r1Opponent, r2Opponent, r3OpponentDerived, 
+        r4Opponent, r5OpponentDerived, r6OpponentDerived
+    ].filter(name => name && name.trim() !== '');
+
+    if (filledOtherPlayerNames.length === NUM_OTHER_PLAYERS && new Set(filledOtherPlayerNames).size === NUM_OTHER_PLAYERS) {
+        const uniqueP1OpponentsR1ToR6 = [...new Set(p1OpponentsR1ToR6)];
+        if (uniqueP1OpponentsR1ToR6.length === 6) { 
+            const allR1ToR6AreValidOpponentsInList = uniqueP1OpponentsR1ToR6.every(op => filledOtherPlayerNames.includes(op));
+            if (allR1ToR6AreValidOpponentsInList) {
+                const remainingPlayers = filledOtherPlayerNames.filter(
+                    name => !uniqueP1OpponentsR1ToR6.includes(name)
+                );
+                if (remainingPlayers.length === 1) {
+                    calculatedR7Opponent = remainingPlayers[0];
+                }
+            }
+        }
+    }
+
+    const cycle1Opponents = [
+      r1Opponent,
+      r2Opponent,
+      r3OpponentDerived,
+      r4Opponent,
+      r5OpponentDerived,
+      r6OpponentDerived,
+      calculatedR7Opponent, 
+    ];
+
+    const newPredictions = Array(TOTAL_ROUNDS_DISPLAYED).fill('?');
+    for (let i = 0; i < CYCLE_LENGTH; i++) {
+      const opponentName = cycle1Opponents[i] || '?';
+
+      if (i < TOTAL_ROUNDS_DISPLAYED) {
+        newPredictions[i] = opponentName; 
+      }
+      if (i + CYCLE_LENGTH < TOTAL_ROUNDS_DISPLAYED) {
+        newPredictions[i + CYCLE_LENGTH] = opponentName; 
+      }
+      if (i + 2 * CYCLE_LENGTH < TOTAL_ROUNDS_DISPLAYED) {
+         newPredictions[i + 2 * CYCLE_LENGTH] = opponentName;
+      }
+    }
+    setPredictionsForP1(newPredictions);
+  }, [
+    r1Opponent, r2Opponent, r3OpponentDerived, r4Opponent,
+    r5OpponentDerived, r6OpponentDerived, otherPlayerNames
+  ]);
+
+  const resetAllInputs = () => {
+    setPlayer1Name('');
+    setOtherPlayerNames(Array(NUM_OTHER_PLAYERS).fill(''));
+    setR1Opponent('');
+    setR2Opponent('');
+    setR3OpponentDerived('');
+    setR4Opponent('');
+    setR5OpponentDerived('');
+    setR6OpponentDerived('');
+  };
+
+  return (
+    React.createElement("div", { className: "container mx-auto p-4 md:p-8 min-h-screen text-[#22DFBF]" },
+      React.createElement("header", { className: "text-center mb-10" },
+        React.createElement("h1", { className: "text-4xl md:text-5xl font-extrabold text-[#22DFBF]" },
+          "Magic Chess GoGo Matchup Counter"
+        ),
+        React.createElement("div", { className: "mt-4" },
+          React.createElement("p", { className: "text-[#22DFBF] text-lg md:text-xl" }, "BY FML Playaz")
+        )
+      ),
+      React.createElement("div", { className: "grid grid-cols-1 lg:grid-cols-3 gap-8 items-start" },
+        React.createElement("div", { className: "lg:col-span-2 bg-[#001301] p-6 rounded-xl shadow-2xl border border-[#22DFBF]/30" },
+          React.createElement("h2", { className: "text-2xl font-bold text-[#22DFBF] mb-6" }, "Player Information"),
+          React.createElement(PlayerNameInput, {
+            id: "player1Name",
+            label: "Your Name (Player 1)",
+            value: player1Name,
+            onChange: setPlayer1Name
+          }),
+          React.createElement("div", { className: "grid grid-cols-1 md:grid-cols-2 gap-x-4" },
+            otherPlayerNames.map((name, index) => (
+              React.createElement(PlayerNameInput, {
+                key: `otherPlayer-${index}`,
+                id: `otherPlayer-${index}`,
+                label: `Other Player ${index + 2} Name`,
+                value: name,
+                onChange: (val) => handleOtherPlayerNameChange(index, val)
+              })
+            ))
+          ),
+          React.createElement("h2", { className: "text-2xl font-bold text-[#22DFBF] mt-8 mb-6" }, "Matchup History"),
+          React.createElement("div", { className: "grid grid-cols-1 md:grid-cols-2 gap-x-4" },
+            React.createElement(MatchupSelector, {
+              id: "p1r1vs",
+              label: React.createElement(React.Fragment, null, "Who will ", React.createElement("strong", null, "you (", player1Name || 'P1', ")"), " fight in R1?"),
+              value: r1Opponent,
+              onChange: setR1Opponent,
+              options: p1OpponentOptions,
+              disabled: !player1Name || p1OpponentOptions.length === 0,
+              placeholder: "Select R1 Opponent"
+            }),
+            React.createElement(MatchupSelector, {
+              id: "p1r2vs",
+              label: React.createElement(React.Fragment, null, "Who will ", React.createElement("strong", null, "you (", player1Name || 'P1', ")"), " fight in R2?"),
+              value: r2Opponent,
+              onChange: setR2Opponent,
+              options: p1OpponentOptions,
+              disabled: !player1Name || p1OpponentOptions.length === 0,
+              placeholder: "Select R2 Opponent"
+            }),
+            React.createElement(MatchupSelector, {
+              id: "p1r1opp_r2vs",
+              label: React.createElement(React.Fragment, null, "Who did ", React.createElement("strong", null, r1Opponent || 'Your R1 Opp.'), " fight in R2? (Determines P1's R3)"),
+              value: r3OpponentDerived,
+              onChange: setR3OpponentDerived,
+              options: getFilteredOptions(r1Opponent),
+              disabled: !r1Opponent || getFilteredOptions(r1Opponent).length === 0,
+              placeholder: "Select their R2 Opponent"
+            }),
+            React.createElement(MatchupSelector, {
+              id: "p1r4vs",
+              label: React.createElement(React.Fragment, null, "Who will ", React.createElement("strong", null, "you (", player1Name || 'P1', ")"), " fight in R4?"),
+              value: r4Opponent,
+              onChange: setR4Opponent,
+              options: p1OpponentOptions,
+              disabled: !player1Name || p1OpponentOptions.length === 0,
+              placeholder: "Select R4 Opponent"
+            }),
+            React.createElement(MatchupSelector, {
+              id: "p1r1opp_r4vs",
+              label: React.createElement(React.Fragment, null, "Who did ", React.createElement("strong", null, r1Opponent || 'Your R1 Opp.'), " fight in R4? (Determines P1's R5)"),
+              value: r5OpponentDerived,
+              onChange: setR5OpponentDerived,
+              options: getFilteredOptions(r1Opponent),
+              disabled: !r1Opponent || getFilteredOptions(r1Opponent).length === 0,
+              placeholder: "Select their R4 Opponent"
+            }),
+            React.createElement(MatchupSelector, {
+              id: "p1r3opp_r5vs",
+              label: React.createElement(React.Fragment, null, "Who did ", React.createElement("strong", null, p1sR3OpponentActual || 'Your R3 Opp.'), " fight in R5? (Determines P1's R6)"),
+              value: r6OpponentDerived,
+              onChange: setR6OpponentDerived,
+              options: getFilteredOptions(p1sR3OpponentActual),
+              disabled: !p1sR3OpponentActual || getFilteredOptions(p1sR3OpponentActual).length === 0,
+              placeholder: "Select their R5 Opponent"
+            })
+          ),
+          React.createElement("button", {
+            onClick: resetAllInputs,
+            className: "w-full mt-8 bg-[#22DFBF] hover:bg-[#1ABEA9] text-[#000000] font-semibold py-3 px-4 rounded-md transition duration-150 ease-in-out shadow-lg focus:outline-none focus:ring-2 focus:ring-[#22DFBF] focus:ring-opacity-75"
+          }, "Reset All Inputs")
+        ),
+        React.createElement("div", { className: "lg:col-span-1 lg:sticky lg:top-8" },
+          React.createElement(PredictionDisplay, { player1Name: player1Name, predictions: predictionsForP1 })
+        )
+      ),
+      React.createElement("footer", { className: "text-center text-[#22DFBF]/70 mt-12 pb-8" },
+        React.createElement("p", null, "\u00A9 2025 Magic Chess: GoGo Matchup Counter by GroovGRV (FML PLAYAZ). For entertainment purposes only.")
+      )
+    )
+  );
+};
+// --- END OF INLINED App.tsx ---
+
+// --- START OF INLINED index.tsx (render logic) ---
+const rootElement = document.getElementById('root');
+if (!rootElement) {
+  throw new Error("Could not find root element to mount to");
+}
+
+const root = ReactDOM.createRoot(rootElement);
+root.render(
+  React.createElement(React.StrictMode, null,
+    React.createElement(App, null)
+  )
+);
+// --- END OF INLINED index.tsx (render logic) ---
+  </script>
 <script type="module" src="/index.tsx"></script>
 </body>
 </html>
